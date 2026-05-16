@@ -1,0 +1,160 @@
+version: 1
+description: >
+  Analytics data warehouse for a wholesale supplier business.
+  Data covers orders, customers, and revenue from 1992-1998 across
+  5 global regions and 25 nations. Use the mart models below for
+  all analysis — never query staging or raw tables directly.
+
+business_context:
+  company: "Wholesale Supplier (TPC-H benchmark dataset)"
+  date_range: "1992-01-01 to 1998-12-31"
+  regions:
+    - AFRICA
+    - AMERICA
+    - ASIA
+    - EUROPE
+    - MIDDLE EAST
+  market_segments:
+    - AUTOMOBILE
+    - BUILDING
+    - FURNITURE
+    - MACHINERY
+    - HOUSEHOLD
+  order_statuses:
+    O: "Open — order is still active"
+    F: "Fulfilled — order has been completed"
+    P: "Pending — order is being processed"
+
+models:
+  - name: fct_orders
+    description: >
+      One row per order. Use this for order-level analysis, filtering
+      by status, priority, region, or date. This is the most granular
+      mart table. Joins customer, nation, and region context onto each order.
+    use_when:
+      - "Questions about individual orders"
+      - "Filtering by order status or priority"
+      - "Revenue by region or nation at order level"
+      - "Counting orders over a time period"
+    columns:
+      order_id: "Unique identifier for each order"
+      customer_id: "Foreign key to the customer"
+      order_date: "Date the order was placed (DATE type)"
+      order_status: "O=Open, F=Fulfilled, P=Pending"
+      order_priority: "1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED, 5-LOW"
+      region_name: "Geographic region: AFRICA, AMERICA, ASIA, EUROPE, MIDDLE EAST"
+      nation_name: "Country name within the region"
+      total_revenue: "Revenue net of discounts. Primary revenue metric. Use this for all revenue calculations."
+      line_item_count: "Number of line items in the order"
+      total_quantity: "Total quantity of items ordered"
+      avg_discount: "Average discount as decimal — 0.05 means 5%"
+
+  - name: agg_monthly_revenue
+    description: >
+      One row per month + region + nation. Pre-aggregated for time-series
+      and trend analysis. Use this for any question about revenue over time,
+      monthly comparisons, or regional trends. Much faster than aggregating
+      fct_orders for time-series questions.
+    use_when:
+      - "Revenue trends over time"
+      - "Month over month or year over year comparisons"
+      - "Regional performance over time"
+      - "How many orders or customers in a given month"
+    columns:
+      month: "First day of the month (DATE type). Use date_trunc or direct filtering."
+      region_name: "Geographic region"
+      nation_name: "Country name"
+      order_count: "Number of orders that month"
+      customer_count: "Distinct customers who ordered that month"
+      total_revenue: "Total revenue for that month, region, and nation"
+      avg_order_revenue: "Average revenue per order that month"
+
+  - name: agg_customer_stats
+    description: >
+      One row per customer with lifetime aggregated stats. Use this for
+      customer-level analysis, segmentation, ranking customers, or any
+      question about customer behavior across their full history.
+    use_when:
+      - "Top customers by revenue or orders"
+      - "Customer segmentation analysis"
+      - "Lifetime value questions"
+      - "First or last order date per customer"
+      - "Customers who have or have not ordered recently"
+    columns:
+      customer_id: "Unique customer identifier"
+      customer_name: "Customer display name"
+      market_segment: "AUTOMOBILE, BUILDING, FURNITURE, MACHINERY, HOUSEHOLD"
+      account_balance: "Current account balance"
+      nation_name: "Country the customer is based in"
+      region_name: "Region the customer is based in"
+      total_orders: "Total number of orders placed lifetime"
+      lifetime_revenue: "Total revenue from this customer across all orders"
+      avg_order_value: "Average revenue per order"
+      first_order_date: "Date of customer's very first order"
+      last_order_date: "Date of customer's most recent order"
+
+sql_guidelines:
+  - "Always use model names exactly as listed above — fct_orders, agg_monthly_revenue, agg_customer_stats"
+  - "Never query staging tables (stg_*) or raw tables directly"
+  - "For revenue always use the total_revenue column — never recalculate from raw fields"
+  - "Dates are DATE type — use BETWEEN, >=, <= for filtering. Example: WHERE order_date >= '1995-01-01'"
+  - "For month filtering use: WHERE month = '1995-01-01' (first day of month)"
+  - "Region and nation names are UPPERCASE strings"
+  - "Limit results to 100 rows unless the user asks for more"
+  - "Always include an ORDER BY clause for ranking or trend questions"
+  - "Use COUNT(DISTINCT customer_id) for unique customer counts"
+
+few_shot_examples:
+  - question: "What was total revenue by region last year?"
+    sql: |
+      SELECT
+        region_name,
+        SUM(total_revenue) as total_revenue
+      FROM agg_monthly_revenue
+      WHERE month >= '1997-01-01' AND month < '1998-01-01'
+      GROUP BY region_name
+      ORDER BY total_revenue DESC
+
+  - question: "Who are the top 10 customers by lifetime revenue?"
+    sql: |
+      SELECT
+        customer_name,
+        market_segment,
+        nation_name,
+        lifetime_revenue,
+        total_orders
+      FROM agg_customer_stats
+      ORDER BY lifetime_revenue DESC
+      LIMIT 10
+
+  - question: "How has monthly revenue trended in the EUROPE region?"
+    sql: |
+      SELECT
+        month,
+        SUM(total_revenue) as total_revenue,
+        SUM(order_count) as order_count
+      FROM agg_monthly_revenue
+      WHERE region_name = 'EUROPE'
+      GROUP BY month
+      ORDER BY month ASC
+
+  - question: "How many orders were placed each year?"
+    sql: |
+      SELECT
+        date_trunc('year', order_date) as year,
+        COUNT(DISTINCT order_id) as order_count,
+        SUM(total_revenue) as total_revenue
+      FROM fct_orders
+      GROUP BY year
+      ORDER BY year ASC
+
+  - question: "What is the revenue breakdown by market segment?"
+    sql: |
+      SELECT
+        market_segment,
+        COUNT(DISTINCT customer_id) as customer_count,
+        SUM(lifetime_revenue) as total_revenue,
+        AVG(avg_order_value) as avg_order_value
+      FROM agg_customer_stats
+      GROUP BY market_segment
+      ORDER BY total_revenue DESC
