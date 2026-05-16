@@ -1,0 +1,7 @@
+txt_sql_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "/Users/kmysore/Projects/text-to-sql-analytics-assistant/tpch.duckdb"
+      threads: 4
