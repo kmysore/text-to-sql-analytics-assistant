@@ -12,7 +12,7 @@ def execute_sql(sql: str, limit: int = 100) -> dict:
 
         # Safety check — only allow SELECT statements
         sql_clean = sql.strip().upper()
-        if not sql_clean.startswith("SELECT"):
+        if not sql_clean.startswith("SELECT") and not sql_clean.startswith("WITH"):
             return {
                 "success": False,
                 "error": "Only SELECT statements are allowed",

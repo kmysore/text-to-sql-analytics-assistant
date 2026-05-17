@@ -100,9 +100,11 @@ sql_guidelines:
   - "Dates are DATE type — use BETWEEN, >=, <= for filtering. Example: WHERE order_date >= '1995-01-01'"
   - "For month filtering use: WHERE month = '1995-01-01' (first day of month)"
   - "Region and nation names are UPPERCASE strings"
-  - "Limit results to 100 rows unless the user asks for more"
   - "Always include an ORDER BY clause for ranking or trend questions"
   - "Use COUNT(DISTINCT customer_id) for unique customer counts"
+  - "For year over year comparisons return ONE row with both years as columns using CASE WHEN"
+  - "When asked for trends or monthly data do NOT add a LIMIT clause"
+  - "For date_trunc results always use GROUP BY on the truncated date"
 
 few_shot_examples:
   - question: "What was total revenue by region last year?"
@@ -145,8 +147,39 @@ few_shot_examples:
         COUNT(DISTINCT order_id) as order_count,
         SUM(total_revenue) as total_revenue
       FROM fct_orders
-      GROUP BY year
+      GROUP BY date_trunc('year', order_date)
       ORDER BY year ASC
+
+  - question: "What was the month over month revenue change in 1996?"
+    sql: |
+      WITH monthly AS (
+        SELECT month,
+               SUM(total_revenue) as total_revenue
+        FROM agg_monthly_revenue
+        WHERE month >= '1996-01-01' AND month < '1997-01-01'
+        GROUP BY month
+      )
+      SELECT month,
+             total_revenue,
+             LAG(total_revenue) OVER (ORDER BY month) as prev_month_revenue,
+             ROUND(total_revenue - LAG(total_revenue) OVER (ORDER BY month), 2) as revenue_change
+      FROM monthly
+      ORDER BY month
+
+  - question: "What is the running total revenue by month in 1995?"
+    sql: |
+      WITH monthly AS (
+        SELECT month,
+               SUM(total_revenue) as total_revenue
+        FROM agg_monthly_revenue
+        WHERE month >= '1995-01-01' AND month < '1996-01-01'
+        GROUP BY month
+      )
+      SELECT month,
+             total_revenue,
+             SUM(total_revenue) OVER (ORDER BY month) as running_total
+      FROM monthly
+      ORDER BY month ASC
 
   - question: "What is the revenue breakdown by market segment?"
     sql: |
@@ -158,3 +191,13 @@ few_shot_examples:
       FROM agg_customer_stats
       GROUP BY market_segment
       ORDER BY total_revenue DESC
+  - question: "What was the year over year revenue growth from 1993 to 1994?"
+    sql: |
+      SELECT
+        SUM(CASE WHEN month >= '1993-01-01' AND month < '1994-01-01' THEN total_revenue END) as revenue_1993,
+        SUM(CASE WHEN month >= '1994-01-01' AND month < '1995-01-01' THEN total_revenue END) as revenue_1994,
+        ROUND(100.0 * (
+          SUM(CASE WHEN month >= '1994-01-01' AND month < '1995-01-01' THEN total_revenue END) -
+          SUM(CASE WHEN month >= '1993-01-01' AND month < '1994-01-01' THEN total_revenue END)
+        ) / SUM(CASE WHEN month >= '1993-01-01' AND month < '1994-01-01' THEN total_revenue END), 2) as yoy_growth_pct
+      FROM agg_monthly_revenue
