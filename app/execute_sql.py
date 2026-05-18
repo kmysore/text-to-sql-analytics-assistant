@@ -2,7 +2,8 @@ import duckdb
 import pandas as pd
 
 
-DB_PATH = "tpch.duckdb"
+import os
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tpch.duckdb")
 
 def execute_sql(sql: str, limit: int = 100) -> dict:
     """Execute SQL against DuckDB and return results."""

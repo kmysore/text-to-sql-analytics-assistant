@@ -19,4 +19,5 @@ python-dotenv>=1.0.0
 
 # Dev
 ipykernel>=6.29.0
-jupyter>=1.0.0
+jupyter>=1.0.0plotly>=5.0.0
+mcp>=1.0.0

@@ -1,50 +1,13 @@
-from app.generate_sql import generate_sql, load_semantic_context
-from app.execute_sql import execute_sql
+from app.generate_sql import run_agentic_pipeline, load_semantic_context
 
-def run_pipeline(question: str, context: dict = None) -> dict:
-    """Full pipeline: question -> SQL -> results."""
 
+def run_pipeline(question: str, context: dict = None, generate_insights: bool = True) -> dict:
+    """
+    Full agentic pipeline using Claude tool use.
+    Single API conversation: question -> SQL tool call -> results -> insight.
+    """
     if context is None:
         context = load_semantic_context()
 
     print(f"\n🔍 Question: {question}")
-
-    # Step 1: Generate SQL
-    gen_result = generate_sql(question, context)
-
-    if not gen_result["success"]:
-        return {
-            "success": False,
-            "question": question,
-            "sql": None,
-            "df": None,
-            "error": gen_result.get("error", "SQL generation failed")
-        }
-
-    sql = gen_result["sql"]
-    print(f"\n📝 Generated SQL:\n{sql}")
-
-    # Step 2: Execute SQL
-    exec_result = execute_sql(sql)
-
-    if not exec_result["success"]:
-        return {
-            "success": False,
-            "question": question,
-            "sql": sql,
-            "df": None,
-            "error": exec_result["error"]
-        }
-
-    print(f"\n✅ Results: {exec_result['row_count']} rows returned")
-    print(exec_result["df"].head(10).to_string(index=False))
-
-    return {
-        "success": True,
-        "question": question,
-        "sql": sql,
-        "df": exec_result["df"],
-        "row_count": exec_result["row_count"],
-        "tokens_used": gen_result["tokens_used"],
-        "error": None
-    }
+    return run_agentic_pipeline(question, context)
